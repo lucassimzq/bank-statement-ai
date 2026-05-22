@@ -1,2 +1,4 @@
 encore.dev v1.52.1 h1:bXMNaysltM1OrfsKd+CxRRMRsVHYuU1jOvvR59mExy0=
 encore.dev v1.52.1/go.mod h1:lK8vSJG6uhYeUwT87/FEpcLdiN98QUcotd3gxRX0xDw=
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
