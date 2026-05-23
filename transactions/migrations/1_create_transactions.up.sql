@@ -8,13 +8,14 @@ CREATE TABLE categories (
 INSERT INTO categories (name, slug) VALUES
     ('Dining',          'dining'),
     ('Groceries',       'groceries'),
-    ('Online Shopping', 'online_shopping'),
+    ('Online Shopping', 'online-shopping'),
     ('Transport',       'transport'),
     ('Insurance',       'insurance'),
     ('Entertainment',   'entertainment'),
     ('Health',          'health'),
     ('Utilities',       'utilities'),
     ('Travel',          'travel'),
+    ('EWallet Topup', 'ewallet-topup'),
     ('Others',          'others');
 
 CREATE TABLE transactions (

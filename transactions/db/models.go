@@ -17,6 +17,13 @@ type Category struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type CategoryMapping struct {
+	ID              uuid.UUID `json:"id"`
+	MerchantPattern string    `json:"merchant_pattern"`
+	CategoryID      uuid.UUID `json:"category_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
 type Transaction struct {
 	ID          uuid.UUID `json:"id"`
 	StatementID uuid.UUID `json:"statement_id"`

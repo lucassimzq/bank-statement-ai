@@ -1,6 +1,29 @@
 package statements
 
-const parsePrompt = `You are a bank statement parser. Extract all transactions from this credit card PDF statement.
+import (
+	"strings"
+
+	"encore.app/transactions"
+)
+
+func buildParsePrompt(categorySlugs []string, mappings []*transactions.CategoryMapping) string {
+	slugList := strings.Join(categorySlugs, ", ")
+
+	var mappingSection string
+	if len(mappings) > 0 {
+		var sb strings.Builder
+		sb.WriteString("\nKnown merchant mappings — when the merchant_raw contains any of these patterns, use the specified category_slug:\n")
+		for _, m := range mappings {
+			sb.WriteString("- \"")
+			sb.WriteString(m.MerchantPattern)
+			sb.WriteString("\" -> ")
+			sb.WriteString(m.CategorySlug)
+			sb.WriteString("\n")
+		}
+		mappingSection = sb.String()
+	}
+
+	return `You are a bank statement parser. Extract all transactions from this credit card PDF statement.
 
 Return a JSON object with this exact structure:
 {
@@ -22,6 +45,8 @@ Rules:
 - merchant_raw: the exact merchant string as it appears on the statement
 - merchant: a clean, human-readable merchant name
 - amount: positive number as string with 2 decimal places (no currency symbol); use negative for credits/refunds
-- category_slug: one of: dining, groceries, online_shopping, transport, insurance, entertainment, health, utilities, travel, others
+- category_slug: must be one of: ` + slugList + mappingSection + `
+- When unsure of the category, use "others" rather than guessing
 
 Return ONLY the JSON object, no explanation or markdown.`
+}

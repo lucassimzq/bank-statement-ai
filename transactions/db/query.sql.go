@@ -12,6 +12,15 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteCategoryMapping = `-- name: DeleteCategoryMapping :exec
+DELETE FROM category_mapping WHERE id = $1
+`
+
+func (q *Queries) DeleteCategoryMapping(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteCategoryMapping, id)
+	return err
+}
+
 const deleteTransactionsByStatement = `-- name: DeleteTransactionsByStatement :exec
 DELETE FROM transactions WHERE statement_id = $1
 `
@@ -79,6 +88,29 @@ func (q *Queries) GetTransactionByID(ctx context.Context, id uuid.UUID) (GetTran
 	return i, err
 }
 
+const insertCategoryMapping = `-- name: InsertCategoryMapping :one
+INSERT INTO category_mapping (merchant_pattern, category_id)
+VALUES ($1, (SELECT id FROM categories WHERE slug = $2))
+RETURNING id, merchant_pattern, category_id, created_at
+`
+
+type InsertCategoryMappingParams struct {
+	MerchantPattern string `json:"merchant_pattern"`
+	Slug            string `json:"slug"`
+}
+
+func (q *Queries) InsertCategoryMapping(ctx context.Context, arg InsertCategoryMappingParams) (CategoryMapping, error) {
+	row := q.db.QueryRowContext(ctx, insertCategoryMapping, arg.MerchantPattern, arg.Slug)
+	var i CategoryMapping
+	err := row.Scan(
+		&i.ID,
+		&i.MerchantPattern,
+		&i.CategoryID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertTransaction = `-- name: InsertTransaction :one
 INSERT INTO transactions (statement_id, card_id, txn_date, merchant_raw, merchant, amount, category_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -137,6 +169,50 @@ func (q *Queries) QueryCategories(ctx context.Context) ([]Category, error) {
 			&i.ID,
 			&i.Name,
 			&i.Slug,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const queryCategoryMappings = `-- name: QueryCategoryMappings :many
+SELECT cm.id, cm.merchant_pattern, c.slug AS category_slug, c.name AS category_name, cm.created_at
+FROM category_mapping cm
+JOIN categories c ON c.id = cm.category_id
+ORDER BY cm.merchant_pattern
+`
+
+type QueryCategoryMappingsRow struct {
+	ID              uuid.UUID `json:"id"`
+	MerchantPattern string    `json:"merchant_pattern"`
+	CategorySlug    string    `json:"category_slug"`
+	CategoryName    string    `json:"category_name"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+func (q *Queries) QueryCategoryMappings(ctx context.Context) ([]QueryCategoryMappingsRow, error) {
+	rows, err := q.db.QueryContext(ctx, queryCategoryMappings)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []QueryCategoryMappingsRow
+	for rows.Next() {
+		var i QueryCategoryMappingsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.MerchantPattern,
+			&i.CategorySlug,
+			&i.CategoryName,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

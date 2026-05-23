@@ -2,13 +2,6 @@ package transactions
 
 import "time"
 
-type Category struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Slug      string    `json:"slug"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
 type Transaction struct {
 	ID           string    `json:"id"`
 	StatementID  string    `json:"statement_id"`

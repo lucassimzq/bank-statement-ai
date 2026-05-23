@@ -6,15 +6,6 @@ import (
 	"encore.dev/beta/errs"
 )
 
-//encore:api public method=GET path=/categories
-func ListCategories(ctx context.Context) (*ListCategoriesResponse, error) {
-	cats, err := queryCategories(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &ListCategoriesResponse{Categories: cats}, nil
-}
-
 // BatchCreate inserts multiple transactions for a statement in one call.
 // Only callable internally — invoked by the parsing worker, not external clients.
 //

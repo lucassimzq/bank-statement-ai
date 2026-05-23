@@ -39,3 +39,17 @@ ORDER BY t.txn_date;
 
 -- name: DeleteTransactionsByStatement :exec
 DELETE FROM transactions WHERE statement_id = $1;
+
+-- name: QueryCategoryMappings :many
+SELECT cm.id, cm.merchant_pattern, c.slug AS category_slug, c.name AS category_name, cm.created_at
+FROM category_mapping cm
+JOIN categories c ON c.id = cm.category_id
+ORDER BY cm.merchant_pattern;
+
+-- name: InsertCategoryMapping :one
+INSERT INTO category_mapping (merchant_pattern, category_id)
+VALUES ($1, (SELECT id FROM categories WHERE slug = $2))
+RETURNING id, merchant_pattern, category_id, created_at;
+
+-- name: DeleteCategoryMapping :exec
+DELETE FROM category_mapping WHERE id = $1;

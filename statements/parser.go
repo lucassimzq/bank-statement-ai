@@ -19,15 +19,31 @@ func (s *Service) parseStatement(statementID, cardID, filePath string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
+	cats, err := transactions.ListCategories(ctx)
+	if err != nil {
+		rlog.Error("parser: failed to load categories", "statement_id", statementID, "err", err)
+		return
+	}
+	slugs := make([]string, len(cats.Categories))
+	for i, c := range cats.Categories {
+		slugs[i] = c.Slug
+	}
+
+	mappingsResp, err := transactions.ListCategoryMappings(ctx)
+	if err != nil {
+		rlog.Error("parser: failed to load category mappings", "statement_id", statementID, "err", err)
+		return
+	}
+
 	pdfBytes, err := downloadFile(ctx, filePath)
 	if err != nil {
 		rlog.Error("parser: download failed", "statement_id", statementID, "err", err)
 		return
 	}
 
-	parsed, err := s.callGemini(ctx, pdfBytes)
+	parsed, err := s.callGemini(ctx, pdfBytes, slugs, mappingsResp.Mappings)
 	if err != nil {
-		rlog.Error("parser: claude call failed", "statement_id", statementID, "err", err)
+		rlog.Error("parser: gemini call failed", "statement_id", statementID, "err", err)
 		return
 	}
 
@@ -47,13 +63,13 @@ func downloadFile(ctx context.Context, filePath string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (s *Service) callGemini(ctx context.Context, pdfBytes []byte) (*parsedStatement, error) {
+func (s *Service) callGemini(ctx context.Context, pdfBytes []byte, categorySlugs []string, mappings []*transactions.CategoryMapping) (*parsedStatement, error) {
 	model := s.gemini.GenerativeModel("gemini-3.5-flash")
 	model.ResponseMIMEType = "application/json"
 
 	resp, err := model.GenerateContent(ctx,
 		genai.Blob{MIMEType: "application/pdf", Data: pdfBytes},
-		genai.Text(parsePrompt),
+		genai.Text(buildParsePrompt(categorySlugs, mappings)),
 	)
 	if err != nil {
 		return nil, err

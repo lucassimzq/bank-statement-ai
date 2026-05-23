@@ -7,10 +7,6 @@ import (
 	"encore.dev/beta/errs"
 )
 
-type ListCategoriesResponse struct {
-	Categories []*Category `json:"categories"`
-}
-
 type TransactionInput struct {
 	TxnDate      time.Time `json:"txn_date"`
 	MerchantRaw  string    `json:"merchant_raw"`

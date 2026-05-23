@@ -8,18 +8,6 @@ import (
 	"github.com/google/uuid"
 )
 
-func queryCategories(ctx context.Context) ([]*Category, error) {
-	rows, err := queries.QueryCategories(ctx)
-	if err != nil {
-		return nil, errs.WrapCode(err, errs.Internal, "query categories")
-	}
-	cats := make([]*Category, len(rows))
-	for i, r := range rows {
-		cats[i] = &Category{ID: r.ID.String(), Name: r.Name, Slug: r.Slug, CreatedAt: r.CreatedAt}
-	}
-	return cats, nil
-}
-
 func insertTransaction(ctx context.Context, statementID, cardID string, t TransactionInput) (*Transaction, error) {
 	sID, err := uuid.Parse(statementID)
 	if err != nil {
@@ -47,7 +35,6 @@ func insertTransaction(ctx context.Context, statementID, cardID string, t Transa
 		return nil, errs.WrapCode(err, errs.Internal, "insert transaction")
 	}
 
-	// Fetch with JOIN to get category name/slug for the response
 	return getTransactionByID(ctx, row.ID.String())
 }
 
