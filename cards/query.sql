@@ -18,13 +18,17 @@ VALUES ($1, $2, $3, $4)
 RETURNING id, bank_id, label, purpose, last4, created_at;
 
 -- name: QueryCards :many
-SELECT c.id, c.bank_id, b.name AS bank_name, c.label, c.purpose, c.last4, c.created_at
+SELECT c.id, c.bank_id,
+       b.name AS bank_name, b.slug AS bank_slug, b.logo_url AS bank_logo_url, b.created_at AS bank_created_at,
+       c.label, c.purpose, c.last4, c.created_at
 FROM cards c
 JOIN banks b ON b.id = c.bank_id
 ORDER BY c.created_at;
 
 -- name: GetCardByID :one
-SELECT c.id, c.bank_id, b.name AS bank_name, c.label, c.purpose, c.last4, c.created_at
+SELECT c.id, c.bank_id,
+       b.name AS bank_name, b.slug AS bank_slug, b.logo_url AS bank_logo_url, b.created_at AS bank_created_at,
+       c.label, c.purpose, c.last4, c.created_at
 FROM cards c
 JOIN banks b ON b.id = c.bank_id
 WHERE c.id = $1;

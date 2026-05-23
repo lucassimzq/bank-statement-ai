@@ -15,8 +15,8 @@ type Bank struct {
 	ID        uuid.UUID      `json:"id"`
 	Name      string         `json:"name"`
 	Slug      string         `json:"slug"`
-	CreatedAt time.Time      `json:"created_at"`
 	LogoUrl   sql.NullString `json:"logo_url"`
+	CreatedAt time.Time      `json:"created_at"`
 }
 
 type Card struct {

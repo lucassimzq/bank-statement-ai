@@ -16,6 +16,7 @@ import (
 type BucketRef interface {
 	objects.Uploader
 	objects.Attrser
+	objects.PublicURLer
 }
 
 type bankDef struct {
@@ -62,14 +63,14 @@ func SeedBanks(ctx context.Context, queries *cardsdb.Queries, bucket BucketRef) 
 }
 
 // uploadLogo uploads the logo file to the bucket if it doesn't already exist.
-// Returns the object key (path) on success, empty string if skipped or failed.
+// Returns the public URL on success, empty string if skipped or failed.
 func uploadLogo(ctx context.Context, bucket BucketRef, dir, slug, filename string) string {
 	objectKey := "logos/" + slug + "/" + filename
 
 	// Check if already uploaded
 	if _, err := bucket.Attrs(ctx, objectKey); err == nil {
 		rlog.Debug("seed: logo already in bucket, skipping upload", "key", objectKey)
-		return objectKey
+		return bucket.PublicURL(objectKey).String()
 	}
 
 	localPath := filepath.Join(dir, filename)
@@ -106,5 +107,5 @@ func uploadLogo(ctx context.Context, bucket BucketRef, dir, slug, filename strin
 	}
 
 	rlog.Info("seed: uploaded logo", "key", objectKey)
-	return objectKey
+	return bucket.PublicURL(objectKey).String()
 }

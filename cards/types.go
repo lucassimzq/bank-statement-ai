@@ -12,8 +12,7 @@ type Bank struct {
 
 type Card struct {
 	ID        string    `json:"id"`
-	BankID    string    `json:"bank_id"`
-	BankName  string    `json:"bank_name"`
+	Bank      *Bank     `json:"bank"`
 	Label     string    `json:"label"`
 	Purpose   string    `json:"purpose"`
 	Last4     string    `json:"last4"`

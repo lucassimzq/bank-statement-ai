@@ -50,14 +50,8 @@ func insertCard(ctx context.Context, p *CreateCardParams) (*Card, error) {
 	if err != nil {
 		return nil, errs.WrapCode(err, errs.Internal, "insert card")
 	}
-	return &Card{
-		ID:        row.ID.String(),
-		BankID:    row.BankID.String(),
-		Label:     row.Label,
-		Purpose:   row.Purpose,
-		Last4:     row.Last4,
-		CreatedAt: row.CreatedAt,
-	}, nil
+	// Re-fetch via GetCardByID so the response includes the full bank struct.
+	return getCardByID(ctx, row.ID.String())
 }
 
 func queryCards(ctx context.Context) ([]*Card, error) {
@@ -67,10 +61,19 @@ func queryCards(ctx context.Context) ([]*Card, error) {
 	}
 	cards := make([]*Card, len(rows))
 	for i, r := range rows {
+		var logoURL *string
+		if r.BankLogoUrl.Valid {
+			logoURL = &r.BankLogoUrl.String
+		}
 		cards[i] = &Card{
-			ID:        r.ID.String(),
-			BankID:    r.BankID.String(),
-			BankName:  r.BankName,
+			ID: r.ID.String(),
+			Bank: &Bank{
+				ID:        r.BankID.String(),
+				Name:      r.BankName,
+				Slug:      r.BankSlug,
+				LogoURL:   logoURL,
+				CreatedAt: r.BankCreatedAt,
+			},
 			Label:     r.Label,
 			Purpose:   r.Purpose,
 			Last4:     r.Last4,
@@ -89,10 +92,19 @@ func getCardByID(ctx context.Context, id string) (*Card, error) {
 	if err != nil {
 		return nil, errs.B().Code(errs.NotFound).Msg("card not found").Err()
 	}
+	var logoURL *string
+	if r.BankLogoUrl.Valid {
+		logoURL = &r.BankLogoUrl.String
+	}
 	return &Card{
-		ID:        r.ID.String(),
-		BankID:    r.BankID.String(),
-		BankName:  r.BankName,
+		ID: r.ID.String(),
+		Bank: &Bank{
+			ID:        r.BankID.String(),
+			Name:      r.BankName,
+			Slug:      r.BankSlug,
+			LogoURL:   logoURL,
+			CreatedAt: r.BankCreatedAt,
+		},
 		Label:     r.Label,
 		Purpose:   r.Purpose,
 		Last4:     r.Last4,

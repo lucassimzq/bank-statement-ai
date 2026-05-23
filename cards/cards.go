@@ -17,6 +17,7 @@ var queries = db.New(cardsDB.Stdlib())
 
 var bankLogosBucket = objects.NewBucket("bank-logos", objects.BucketConfig{
 	Versioned: false,
+	Public:    true,
 })
 
 //encore:service

@@ -25,20 +25,25 @@ func (q *Queries) BankExists(ctx context.Context, id uuid.UUID) (bool, error) {
 }
 
 const getCardByID = `-- name: GetCardByID :one
-SELECT c.id, c.bank_id, b.name AS bank_name, c.label, c.purpose, c.last4, c.created_at
+SELECT c.id, c.bank_id,
+       b.name AS bank_name, b.slug AS bank_slug, b.logo_url AS bank_logo_url, b.created_at AS bank_created_at,
+       c.label, c.purpose, c.last4, c.created_at
 FROM cards c
 JOIN banks b ON b.id = c.bank_id
 WHERE c.id = $1
 `
 
 type GetCardByIDRow struct {
-	ID        uuid.UUID `json:"id"`
-	BankID    uuid.UUID `json:"bank_id"`
-	BankName  string    `json:"bank_name"`
-	Label     string    `json:"label"`
-	Purpose   string    `json:"purpose"`
-	Last4     string    `json:"last4"`
-	CreatedAt time.Time `json:"created_at"`
+	ID            uuid.UUID      `json:"id"`
+	BankID        uuid.UUID      `json:"bank_id"`
+	BankName      string         `json:"bank_name"`
+	BankSlug      string         `json:"bank_slug"`
+	BankLogoUrl   sql.NullString `json:"bank_logo_url"`
+	BankCreatedAt time.Time      `json:"bank_created_at"`
+	Label         string         `json:"label"`
+	Purpose       string         `json:"purpose"`
+	Last4         string         `json:"last4"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 func (q *Queries) GetCardByID(ctx context.Context, id uuid.UUID) (GetCardByIDRow, error) {
@@ -48,6 +53,9 @@ func (q *Queries) GetCardByID(ctx context.Context, id uuid.UUID) (GetCardByIDRow
 		&i.ID,
 		&i.BankID,
 		&i.BankName,
+		&i.BankSlug,
+		&i.BankLogoUrl,
+		&i.BankCreatedAt,
 		&i.Label,
 		&i.Purpose,
 		&i.Last4,
@@ -92,23 +100,15 @@ const queryBanks = `-- name: QueryBanks :many
 SELECT id, name, slug, logo_url, created_at FROM banks ORDER BY name
 `
 
-type QueryBanksRow struct {
-	ID        uuid.UUID      `json:"id"`
-	Name      string         `json:"name"`
-	Slug      string         `json:"slug"`
-	LogoUrl   sql.NullString `json:"logo_url"`
-	CreatedAt time.Time      `json:"created_at"`
-}
-
-func (q *Queries) QueryBanks(ctx context.Context) ([]QueryBanksRow, error) {
+func (q *Queries) QueryBanks(ctx context.Context) ([]Bank, error) {
 	rows, err := q.db.QueryContext(ctx, queryBanks)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []QueryBanksRow
+	var items []Bank
 	for rows.Next() {
-		var i QueryBanksRow
+		var i Bank
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -130,20 +130,25 @@ func (q *Queries) QueryBanks(ctx context.Context) ([]QueryBanksRow, error) {
 }
 
 const queryCards = `-- name: QueryCards :many
-SELECT c.id, c.bank_id, b.name AS bank_name, c.label, c.purpose, c.last4, c.created_at
+SELECT c.id, c.bank_id,
+       b.name AS bank_name, b.slug AS bank_slug, b.logo_url AS bank_logo_url, b.created_at AS bank_created_at,
+       c.label, c.purpose, c.last4, c.created_at
 FROM cards c
 JOIN banks b ON b.id = c.bank_id
 ORDER BY c.created_at
 `
 
 type QueryCardsRow struct {
-	ID        uuid.UUID `json:"id"`
-	BankID    uuid.UUID `json:"bank_id"`
-	BankName  string    `json:"bank_name"`
-	Label     string    `json:"label"`
-	Purpose   string    `json:"purpose"`
-	Last4     string    `json:"last4"`
-	CreatedAt time.Time `json:"created_at"`
+	ID            uuid.UUID      `json:"id"`
+	BankID        uuid.UUID      `json:"bank_id"`
+	BankName      string         `json:"bank_name"`
+	BankSlug      string         `json:"bank_slug"`
+	BankLogoUrl   sql.NullString `json:"bank_logo_url"`
+	BankCreatedAt time.Time      `json:"bank_created_at"`
+	Label         string         `json:"label"`
+	Purpose       string         `json:"purpose"`
+	Last4         string         `json:"last4"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 func (q *Queries) QueryCards(ctx context.Context) ([]QueryCardsRow, error) {
@@ -159,6 +164,9 @@ func (q *Queries) QueryCards(ctx context.Context) ([]QueryCardsRow, error) {
 			&i.ID,
 			&i.BankID,
 			&i.BankName,
+			&i.BankSlug,
+			&i.BankLogoUrl,
+			&i.BankCreatedAt,
 			&i.Label,
 			&i.Purpose,
 			&i.Last4,
@@ -192,17 +200,9 @@ type UpsertBankParams struct {
 	LogoUrl sql.NullString `json:"logo_url"`
 }
 
-type UpsertBankRow struct {
-	ID        uuid.UUID      `json:"id"`
-	Name      string         `json:"name"`
-	Slug      string         `json:"slug"`
-	LogoUrl   sql.NullString `json:"logo_url"`
-	CreatedAt time.Time      `json:"created_at"`
-}
-
-func (q *Queries) UpsertBank(ctx context.Context, arg UpsertBankParams) (UpsertBankRow, error) {
+func (q *Queries) UpsertBank(ctx context.Context, arg UpsertBankParams) (Bank, error) {
 	row := q.db.QueryRowContext(ctx, upsertBank, arg.Name, arg.Slug, arg.LogoUrl)
-	var i UpsertBankRow
+	var i Bank
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
