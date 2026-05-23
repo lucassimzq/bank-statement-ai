@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -88,22 +89,31 @@ func (q *Queries) InsertCard(ctx context.Context, arg InsertCardParams) (Card, e
 }
 
 const queryBanks = `-- name: QueryBanks :many
-SELECT id, name, slug, created_at FROM banks ORDER BY name
+SELECT id, name, slug, logo_url, created_at FROM banks ORDER BY name
 `
 
-func (q *Queries) QueryBanks(ctx context.Context) ([]Bank, error) {
+type QueryBanksRow struct {
+	ID        uuid.UUID      `json:"id"`
+	Name      string         `json:"name"`
+	Slug      string         `json:"slug"`
+	LogoUrl   sql.NullString `json:"logo_url"`
+	CreatedAt time.Time      `json:"created_at"`
+}
+
+func (q *Queries) QueryBanks(ctx context.Context) ([]QueryBanksRow, error) {
 	rows, err := q.db.QueryContext(ctx, queryBanks)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Bank
+	var items []QueryBanksRow
 	for rows.Next() {
-		var i Bank
+		var i QueryBanksRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
 			&i.Slug,
+			&i.LogoUrl,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -165,4 +175,40 @@ func (q *Queries) QueryCards(ctx context.Context) ([]QueryCardsRow, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertBank = `-- name: UpsertBank :one
+INSERT INTO banks (name, slug, logo_url)
+VALUES ($1, $2, $3)
+ON CONFLICT (slug) DO UPDATE
+    SET name     = EXCLUDED.name,
+        logo_url = EXCLUDED.logo_url
+RETURNING id, name, slug, logo_url, created_at
+`
+
+type UpsertBankParams struct {
+	Name    string         `json:"name"`
+	Slug    string         `json:"slug"`
+	LogoUrl sql.NullString `json:"logo_url"`
+}
+
+type UpsertBankRow struct {
+	ID        uuid.UUID      `json:"id"`
+	Name      string         `json:"name"`
+	Slug      string         `json:"slug"`
+	LogoUrl   sql.NullString `json:"logo_url"`
+	CreatedAt time.Time      `json:"created_at"`
+}
+
+func (q *Queries) UpsertBank(ctx context.Context, arg UpsertBankParams) (UpsertBankRow, error) {
+	row := q.db.QueryRowContext(ctx, upsertBank, arg.Name, arg.Slug, arg.LogoUrl)
+	var i UpsertBankRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.LogoUrl,
+		&i.CreatedAt,
+	)
+	return i, err
 }

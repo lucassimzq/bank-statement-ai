@@ -5,16 +5,18 @@
 package db
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
 )
 
 type Bank struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Slug      string    `json:"slug"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uuid.UUID      `json:"id"`
+	Name      string         `json:"name"`
+	Slug      string         `json:"slug"`
+	CreatedAt time.Time      `json:"created_at"`
+	LogoUrl   sql.NullString `json:"logo_url"`
 }
 
 type Card struct {

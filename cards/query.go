@@ -15,7 +15,11 @@ func queryBanks(ctx context.Context) ([]*Bank, error) {
 	}
 	banks := make([]*Bank, len(rows))
 	for i, r := range rows {
-		banks[i] = &Bank{ID: r.ID.String(), Name: r.Name, Slug: r.Slug, CreatedAt: r.CreatedAt}
+		var logoURL *string
+		if r.LogoUrl.Valid {
+			logoURL = &r.LogoUrl.String
+		}
+		banks[i] = &Bank{ID: r.ID.String(), Name: r.Name, Slug: r.Slug, LogoURL: logoURL, CreatedAt: r.CreatedAt}
 	}
 	return banks, nil
 }

@@ -1,5 +1,13 @@
 -- name: QueryBanks :many
-SELECT id, name, slug, created_at FROM banks ORDER BY name;
+SELECT id, name, slug, logo_url, created_at FROM banks ORDER BY name;
+
+-- name: UpsertBank :one
+INSERT INTO banks (name, slug, logo_url)
+VALUES ($1, $2, $3)
+ON CONFLICT (slug) DO UPDATE
+    SET name     = EXCLUDED.name,
+        logo_url = EXCLUDED.logo_url
+RETURNING id, name, slug, logo_url, created_at;
 
 -- name: BankExists :one
 SELECT EXISTS(SELECT 1 FROM banks WHERE id = $1);

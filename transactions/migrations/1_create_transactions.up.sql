@@ -15,7 +15,7 @@ INSERT INTO categories (name, slug) VALUES
     ('Health',          'health'),
     ('Utilities',       'utilities'),
     ('Travel',          'travel'),
-    ('EWallet Topup', 'ewallet-topup'),
+    ('EWallet Topup',   'ewallet-topup'),
     ('Others',          'others');
 
 CREATE TABLE transactions (
