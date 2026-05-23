@@ -13,7 +13,7 @@ import (
 // Upload accepts a multipart form with fields: card_id, year, month, file (PDF).
 //
 //encore:api public raw method=POST path=/statements/upload
-func Upload(w http.ResponseWriter, r *http.Request) {
+func (s *Service) Upload(w http.ResponseWriter, r *http.Request) {
 	form, err := parseUploadForm(r)
 	if err != nil {
 		writeErr(w, err)
@@ -37,6 +37,8 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+
+	go s.parseStatement(stmt.ID, stmt.CardID, filePath)
 
 	jsonResponse(w, stmt, http.StatusCreated)
 }
