@@ -12,8 +12,33 @@ import (
 	"github.com/google/uuid"
 )
 
+const cardStatementExistsForPeriod = `-- name: CardStatementExistsForPeriod :one
+SELECT EXISTS(
+    SELECT 1
+    FROM card_statement cs
+    JOIN statements s ON s.id = cs.statement_id
+    WHERE cs.card_id = $1
+      AND s.year     = $2
+      AND s.month    = $3
+      AND cs.status  = 1
+)
+`
+
+type CardStatementExistsForPeriodParams struct {
+	CardID uuid.NullUUID `json:"card_id"`
+	Year   sql.NullInt32 `json:"year"`
+	Month  sql.NullInt32 `json:"month"`
+}
+
+func (q *Queries) CardStatementExistsForPeriod(ctx context.Context, arg CardStatementExistsForPeriodParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, cardStatementExistsForPeriod, arg.CardID, arg.Year, arg.Month)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const getStatementByID = `-- name: GetStatementByID :one
-SELECT id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+SELECT id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
 FROM statements
 WHERE id = $1
 `
@@ -23,7 +48,6 @@ func (q *Queries) GetStatementByID(ctx context.Context, id uuid.UUID) (Statement
 	var i Statement
 	err := row.Scan(
 		&i.ID,
-		&i.CardID,
 		&i.Year,
 		&i.Month,
 		&i.StatementBal,
@@ -37,24 +61,57 @@ func (q *Queries) GetStatementByID(ctx context.Context, id uuid.UUID) (Statement
 	return i, err
 }
 
+const insertCardStatement = `-- name: InsertCardStatement :one
+INSERT INTO card_statement (statement_id, card_last4, card_id, status, statement_bal)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, statement_id, card_last4, card_id, status, statement_bal, created_at
+`
+
+type InsertCardStatementParams struct {
+	StatementID  uuid.UUID      `json:"statement_id"`
+	CardLast4    string         `json:"card_last4"`
+	CardID       uuid.NullUUID  `json:"card_id"`
+	Status       int16          `json:"status"`
+	StatementBal sql.NullString `json:"statement_bal"`
+}
+
+func (q *Queries) InsertCardStatement(ctx context.Context, arg InsertCardStatementParams) (CardStatement, error) {
+	row := q.db.QueryRowContext(ctx, insertCardStatement,
+		arg.StatementID,
+		arg.CardLast4,
+		arg.CardID,
+		arg.Status,
+		arg.StatementBal,
+	)
+	var i CardStatement
+	err := row.Scan(
+		&i.ID,
+		&i.StatementID,
+		&i.CardLast4,
+		&i.CardID,
+		&i.Status,
+		&i.StatementBal,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertStatement = `-- name: InsertStatement :one
-INSERT INTO statements (card_id, file_hash, file_path, status)
-VALUES ($1, $2, $3, 0)
-RETURNING id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+INSERT INTO statements (file_hash, file_path, status)
+VALUES ($1, $2, 0)
+RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
 `
 
 type InsertStatementParams struct {
-	CardID   uuid.UUID      `json:"card_id"`
 	FileHash sql.NullString `json:"file_hash"`
 	FilePath sql.NullString `json:"file_path"`
 }
 
 func (q *Queries) InsertStatement(ctx context.Context, arg InsertStatementParams) (Statement, error) {
-	row := q.db.QueryRowContext(ctx, insertStatement, arg.CardID, arg.FileHash, arg.FilePath)
+	row := q.db.QueryRowContext(ctx, insertStatement, arg.FileHash, arg.FilePath)
 	var i Statement
 	err := row.Scan(
 		&i.ID,
-		&i.CardID,
 		&i.Year,
 		&i.Month,
 		&i.StatementBal,
@@ -69,13 +126,14 @@ func (q *Queries) InsertStatement(ctx context.Context, arg InsertStatementParams
 }
 
 const queryStatementsByCard = `-- name: QueryStatementsByCard :many
-SELECT id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
-FROM statements
-WHERE card_id = $1
-ORDER BY created_at DESC
+SELECT s.id, s.year, s.month, s.statement_bal, s.file_path, s.parsed_at, s.created_at, s.status, s.message, s.file_hash
+FROM statements s
+JOIN card_statement cs ON cs.statement_id = s.id
+WHERE cs.card_id = $1
+ORDER BY s.created_at DESC
 `
 
-func (q *Queries) QueryStatementsByCard(ctx context.Context, cardID uuid.UUID) ([]Statement, error) {
+func (q *Queries) QueryStatementsByCard(ctx context.Context, cardID uuid.NullUUID) ([]Statement, error) {
 	rows, err := q.db.QueryContext(ctx, queryStatementsByCard, cardID)
 	if err != nil {
 		return nil, err
@@ -86,7 +144,6 @@ func (q *Queries) QueryStatementsByCard(ctx context.Context, cardID uuid.UUID) (
 		var i Statement
 		if err := rows.Scan(
 			&i.ID,
-			&i.CardID,
 			&i.Year,
 			&i.Month,
 			&i.StatementBal,
@@ -110,35 +167,21 @@ func (q *Queries) QueryStatementsByCard(ctx context.Context, cardID uuid.UUID) (
 	return items, nil
 }
 
-const statementExistsByCardPeriod = `-- name: StatementExistsByCardPeriod :one
+const statementFullyParsedByHash = `-- name: StatementFullyParsedByHash :one
 SELECT EXISTS(
-    SELECT 1 FROM statements
-    WHERE card_id = $1
-      AND year    = $2
-      AND month   = $3
-      AND status != 2
+    SELECT 1 FROM statements s
+    WHERE s.file_hash = $1
+      AND s.status = 1
+      AND NOT EXISTS (
+          SELECT 1 FROM card_statement cs
+          WHERE cs.statement_id = s.id AND cs.status = 2
+      )
 )
 `
 
-type StatementExistsByCardPeriodParams struct {
-	CardID uuid.UUID     `json:"card_id"`
-	Year   sql.NullInt32 `json:"year"`
-	Month  sql.NullInt32 `json:"month"`
-}
-
-func (q *Queries) StatementExistsByCardPeriod(ctx context.Context, arg StatementExistsByCardPeriodParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, statementExistsByCardPeriod, arg.CardID, arg.Year, arg.Month)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
-const statementExistsByHash = `-- name: StatementExistsByHash :one
-SELECT EXISTS(SELECT 1 FROM statements WHERE file_hash = $1 AND status = 1)
-`
-
-func (q *Queries) StatementExistsByHash(ctx context.Context, fileHash sql.NullString) (bool, error) {
-	row := q.db.QueryRowContext(ctx, statementExistsByHash, fileHash)
+// Reject only when the statement is fully parsed (no skipped card_statements).
+func (q *Queries) StatementFullyParsedByHash(ctx context.Context, fileHash sql.NullString) (bool, error) {
+	row := q.db.QueryRowContext(ctx, statementFullyParsedByHash, fileHash)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -149,7 +192,7 @@ UPDATE statements
 SET statement_bal = $2,
     parsed_at     = NOW()
 WHERE id = $1
-RETURNING id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
 `
 
 type UpdateStatementBalanceParams struct {
@@ -162,7 +205,6 @@ func (q *Queries) UpdateStatementBalance(ctx context.Context, arg UpdateStatemen
 	var i Statement
 	err := row.Scan(
 		&i.ID,
-		&i.CardID,
 		&i.Year,
 		&i.Month,
 		&i.StatementBal,
@@ -181,7 +223,7 @@ UPDATE statements
 SET status  = 2,
     message = $2
 WHERE id = $1
-RETURNING id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
 `
 
 type UpdateStatementErrorParams struct {
@@ -194,7 +236,6 @@ func (q *Queries) UpdateStatementError(ctx context.Context, arg UpdateStatementE
 	var i Statement
 	err := row.Scan(
 		&i.ID,
-		&i.CardID,
 		&i.Year,
 		&i.Month,
 		&i.StatementBal,
@@ -216,7 +257,7 @@ SET year          = $2,
     status        = 1,
     parsed_at     = NOW()
 WHERE id = $1
-RETURNING id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
 `
 
 type UpdateStatementParsedParams struct {
@@ -236,7 +277,6 @@ func (q *Queries) UpdateStatementParsed(ctx context.Context, arg UpdateStatement
 	var i Statement
 	err := row.Scan(
 		&i.ID,
-		&i.CardID,
 		&i.Year,
 		&i.Month,
 		&i.StatementBal,

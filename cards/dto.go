@@ -33,3 +33,9 @@ func (p *CreateCardParams) Validate() error {
 type ListCardsResponse struct {
 	Cards []*Card `json:"cards"`
 }
+
+// GetCardByLast4AndBankParams is used by the private parser endpoint.
+type GetCardByLast4AndBankParams struct {
+	Last4    string `query:"last4"`
+	BankSlug string `query:"bank_slug"`
+}

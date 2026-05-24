@@ -1,8 +1,14 @@
 package statements
 
 type parsedStatement struct {
-	Year             int                 `json:"year"`
-	Month            int                 `json:"month"`
+	BankSlug string       `json:"bank_slug"`
+	Year     int          `json:"year"`
+	Month    int          `json:"month"`
+	Cards    []parsedCard `json:"cards"`
+}
+
+type parsedCard struct {
+	CardLast4        string              `json:"card_last4"`
 	StatementBalance string              `json:"statement_balance"`
 	Transactions     []parsedTransaction `json:"transactions"`
 }

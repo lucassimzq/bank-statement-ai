@@ -41,3 +41,11 @@ func ListCards(ctx context.Context) (*ListCardsResponse, error) {
 func GetCard(ctx context.Context, id string) (*Card, error) {
 	return getCardByID(ctx, id)
 }
+
+// GetCardByLast4AndBank looks up a card by its last 4 digits AND bank slug.
+// Used internally by the statement parser to avoid collisions when two cards share the same last4.
+//
+//encore:api private method=GET path=/card-lookup
+func GetCardByLast4AndBank(ctx context.Context, p *GetCardByLast4AndBankParams) (*Card, error) {
+	return getCardByLast4AndBank(ctx, p.Last4, p.BankSlug)
+}

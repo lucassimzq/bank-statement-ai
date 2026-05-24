@@ -23,8 +23,7 @@ func (p *UpdateBalanceParams) Validate() error {
 }
 
 type uploadForm struct {
-	CardID string
-	File   multipart.File
+	File multipart.File
 }
 
 func parseUploadForm(r *http.Request) (*uploadForm, error) {
@@ -32,15 +31,10 @@ func parseUploadForm(r *http.Request) (*uploadForm, error) {
 		return nil, errBad("failed to parse form")
 	}
 
-	cardID := r.FormValue("card_id")
-	if cardID == "" {
-		return nil, errBad("card_id is required")
-	}
-
 	file, _, err := r.FormFile("file")
 	if err != nil {
 		return nil, errBad("file is required")
 	}
 
-	return &uploadForm{CardID: cardID, File: file}, nil
+	return &uploadForm{File: file}, nil
 }

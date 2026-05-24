@@ -83,6 +83,34 @@ func queryCards(ctx context.Context) ([]*Card, error) {
 	return cards, nil
 }
 
+func getCardByLast4AndBank(ctx context.Context, last4, bankSlug string) (*Card, error) {
+	r, err := queries.GetCardByLast4AndBank(ctx, cardsdb.GetCardByLast4AndBankParams{
+		Last4: last4,
+		Slug:  bankSlug,
+	})
+	if err != nil {
+		return nil, errs.B().Code(errs.NotFound).Msg("card not found").Err()
+	}
+	var logoURL *string
+	if r.BankLogoUrl.Valid {
+		logoURL = &r.BankLogoUrl.String
+	}
+	return &Card{
+		ID: r.ID.String(),
+		Bank: &Bank{
+			ID:        r.BankID.String(),
+			Name:      r.BankName,
+			Slug:      r.BankSlug,
+			LogoURL:   logoURL,
+			CreatedAt: r.BankCreatedAt,
+		},
+		Label:     r.Label,
+		Purpose:   r.Purpose,
+		Last4:     r.Last4,
+		CreatedAt: r.CreatedAt,
+	}, nil
+}
+
 func getCardByID(ctx context.Context, id string) (*Card, error) {
 	cardID, err := uuid.Parse(id)
 	if err != nil {

@@ -9,13 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
-func insertStatement(ctx context.Context, cardID, fileHash, filePath string) (*Statement, error) {
-	cID, err := uuid.Parse(cardID)
-	if err != nil {
-		return nil, errs.B().Code(errs.InvalidArgument).Msg("invalid card_id").Err()
-	}
+// ── Statement helpers ────────────────────────────────────────────────────────
+
+func insertStatement(ctx context.Context, fileHash, filePath string) (*Statement, error) {
 	row, err := queries.InsertStatement(ctx, stmtdb.InsertStatementParams{
-		CardID:   cID,
 		FileHash: sql.NullString{String: fileHash, Valid: true},
 		FilePath: sql.NullString{String: filePath, Valid: true},
 	})
@@ -42,7 +39,7 @@ func queryStatementsByCard(ctx context.Context, cardID string) ([]*Statement, er
 	if err != nil {
 		return nil, errs.B().Code(errs.InvalidArgument).Msg("invalid card_id").Err()
 	}
-	rows, err := queries.QueryStatementsByCard(ctx, cID)
+	rows, err := queries.QueryStatementsByCard(ctx, uuid.NullUUID{UUID: cID, Valid: true})
 	if err != nil {
 		return nil, errs.WrapCode(err, errs.Internal, "query statements")
 	}
@@ -100,34 +97,81 @@ func updateStatementBalance(ctx context.Context, id, balance string) (*Statement
 	return toStatement(row), nil
 }
 
-func statementExistsByHash(ctx context.Context, hash string) (bool, error) {
-	exists, err := queries.StatementExistsByHash(ctx, sql.NullString{String: hash, Valid: true})
+// statementFullyParsedByHash returns true only when the hash exists with
+// status=1 AND every card_statement row is also status=1 (nothing was skipped).
+// If any card was skipped (status=2), we allow re-upload.
+func statementFullyParsedByHash(ctx context.Context, hash string) (bool, error) {
+	exists, err := queries.StatementFullyParsedByHash(ctx, sql.NullString{String: hash, Valid: true})
 	if err != nil {
-		return false, errs.WrapCode(err, errs.Internal, "check hash")
+		return false, errs.WrapCode(err, errs.Internal, "check hash: "+err.Error())
 	}
 	return exists, nil
 }
 
-func statementExistsByCardPeriod(ctx context.Context, cardID string, year, month int) (bool, error) {
+// ── CardStatement helpers ────────────────────────────────────────────────────
+
+// insertCardStatementParsed records a successfully processed card.
+func insertCardStatementParsed(ctx context.Context, statementID, cardID, cardLast4, balance string) error {
+	sID, err := uuid.Parse(statementID)
+	if err != nil {
+		return errs.B().Code(errs.InvalidArgument).Msg("invalid statement id").Err()
+	}
 	cID, err := uuid.Parse(cardID)
 	if err != nil {
-		return false, errs.B().Code(errs.InvalidArgument).Msg("invalid card_id").Err()
+		return errs.B().Code(errs.InvalidArgument).Msg("invalid card id").Err()
 	}
-	exists, err := queries.StatementExistsByCardPeriod(ctx, stmtdb.StatementExistsByCardPeriodParams{
-		CardID: cID,
+	var bal sql.NullString
+	if balance != "" {
+		bal = sql.NullString{String: balance, Valid: true}
+	}
+	_, err = queries.InsertCardStatement(ctx, stmtdb.InsertCardStatementParams{
+		StatementID:  sID,
+		CardLast4:    cardLast4,
+		CardID:       uuid.NullUUID{UUID: cID, Valid: true},
+		Status:       1,
+		StatementBal: bal,
+	})
+	return err
+}
+
+// insertCardStatementSkipped records a card that was not found in the system.
+func insertCardStatementSkipped(ctx context.Context, statementID, cardLast4 string) error {
+	sID, err := uuid.Parse(statementID)
+	if err != nil {
+		return errs.B().Code(errs.InvalidArgument).Msg("invalid statement id").Err()
+	}
+	_, err = queries.InsertCardStatement(ctx, stmtdb.InsertCardStatementParams{
+		StatementID: sID,
+		CardLast4:   cardLast4,
+		CardID:      uuid.NullUUID{Valid: false},
+		Status:      2,
+	})
+	return err
+}
+
+// cardStatementExistsForPeriod checks whether a card already has a parsed
+// card_statement entry for the given year+month (prevents double-importing).
+func cardStatementExistsForPeriod(ctx context.Context, cardID string, year, month int) (bool, error) {
+	cID, err := uuid.Parse(cardID)
+	if err != nil {
+		return false, errs.B().Code(errs.InvalidArgument).Msg("invalid card id").Err()
+	}
+	exists, err := queries.CardStatementExistsForPeriod(ctx, stmtdb.CardStatementExistsForPeriodParams{
+		CardID: uuid.NullUUID{UUID: cID, Valid: true},
 		Year:   sql.NullInt32{Int32: int32(year), Valid: true},
 		Month:  sql.NullInt32{Int32: int32(month), Valid: true},
 	})
 	if err != nil {
-		return false, errs.WrapCode(err, errs.Internal, "check period")
+		return false, errs.WrapCode(err, errs.Internal, "check card period")
 	}
 	return exists, nil
 }
 
+// ── Mapper ───────────────────────────────────────────────────────────────────
+
 func toStatement(r stmtdb.Statement) *Statement {
 	s := &Statement{
 		ID:        r.ID.String(),
-		CardID:    r.CardID.String(),
 		Status:    int(r.Status),
 		CreatedAt: r.CreatedAt,
 	}

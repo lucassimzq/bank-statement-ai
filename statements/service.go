@@ -8,13 +8,12 @@ import (
 	"io"
 	"net/http"
 
-	"encore.app/cards"
 	"encore.dev/beta/errs"
 	"encore.dev/storage/objects"
 )
 
-// Upload accepts a multipart form with fields: card_id and file (PDF).
-// Year and month are extracted from the PDF by the AI parser.
+// Upload accepts a multipart form with fields: file (PDF).
+// Cards and period are extracted from the PDF by the AI parser.
 //
 //encore:api public raw method=POST path=/statements/upload
 func (s *Service) Upload(w http.ResponseWriter, r *http.Request) {
@@ -32,26 +31,21 @@ func (s *Service) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate card exists.
-	if _, err := cards.GetCard(r.Context(), form.CardID); err != nil {
-		writeErr(w, errBad("card not found"))
-		return
-	}
-
-	// Pre-validate: reject duplicate files before spending any AI tokens.
+	// Pre-validate: reject only if statement is fully parsed (all cards done).
+	// If some cards were skipped last time, allow re-upload to process them.
 	hash := sha256Hash(pdfBytes)
-	duplicate, err := statementExistsByHash(r.Context(), hash)
+	fullyParsed, err := statementFullyParsedByHash(r.Context(), hash)
 	if err != nil {
 		jsonError(w, "failed to check for duplicate: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if duplicate {
-		jsonError(w, "this statement has already been uploaded", http.StatusConflict)
+	if fullyParsed {
+		jsonError(w, "this statement has already been fully parsed", http.StatusConflict)
 		return
 	}
 
 	// Upload PDF to bucket.
-	filePath := fmt.Sprintf("statements/%s/%s.pdf", form.CardID, hash)
+	filePath := fmt.Sprintf("statements/%s.pdf", hash)
 	writer := statementFiles.Upload(r.Context(), filePath, objects.WithUploadAttrs(objects.UploadAttrs{
 		ContentType: "application/pdf",
 	}))
@@ -65,14 +59,14 @@ func (s *Service) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert statement row with status=parsing.
-	stmt, err := insertStatement(r.Context(), form.CardID, hash, filePath)
+	stmt, err := insertStatement(r.Context(), hash, filePath)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 
 	// Parse in background — passes bytes directly, no re-download needed.
-	go s.parseStatement(stmt.ID, stmt.CardID, pdfBytes)
+	go s.parseStatement(stmt.ID, pdfBytes)
 
 	jsonResponse(w, stmt, http.StatusCreated)
 }

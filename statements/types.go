@@ -10,7 +10,6 @@ const (
 
 type Statement struct {
 	ID           string     `json:"id"`
-	CardID       string     `json:"card_id"`
 	Status       int        `json:"status"`
 	Message      *string    `json:"message"`
 	Year         *int       `json:"year"`

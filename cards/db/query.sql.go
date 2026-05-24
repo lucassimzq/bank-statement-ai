@@ -64,6 +64,94 @@ func (q *Queries) GetCardByID(ctx context.Context, id uuid.UUID) (GetCardByIDRow
 	return i, err
 }
 
+const getCardByLast4 = `-- name: GetCardByLast4 :one
+SELECT c.id, c.bank_id,
+       b.name AS bank_name, b.slug AS bank_slug, b.logo_url AS bank_logo_url, b.created_at AS bank_created_at,
+       c.label, c.purpose, c.last4, c.created_at
+FROM cards c
+JOIN banks b ON b.id = c.bank_id
+WHERE c.last4 = $1
+LIMIT 1
+`
+
+type GetCardByLast4Row struct {
+	ID            uuid.UUID      `json:"id"`
+	BankID        uuid.UUID      `json:"bank_id"`
+	BankName      string         `json:"bank_name"`
+	BankSlug      string         `json:"bank_slug"`
+	BankLogoUrl   sql.NullString `json:"bank_logo_url"`
+	BankCreatedAt time.Time      `json:"bank_created_at"`
+	Label         string         `json:"label"`
+	Purpose       string         `json:"purpose"`
+	Last4         string         `json:"last4"`
+	CreatedAt     time.Time      `json:"created_at"`
+}
+
+func (q *Queries) GetCardByLast4(ctx context.Context, last4 string) (GetCardByLast4Row, error) {
+	row := q.db.QueryRowContext(ctx, getCardByLast4, last4)
+	var i GetCardByLast4Row
+	err := row.Scan(
+		&i.ID,
+		&i.BankID,
+		&i.BankName,
+		&i.BankSlug,
+		&i.BankLogoUrl,
+		&i.BankCreatedAt,
+		&i.Label,
+		&i.Purpose,
+		&i.Last4,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getCardByLast4AndBank = `-- name: GetCardByLast4AndBank :one
+SELECT c.id, c.bank_id,
+       b.name AS bank_name, b.slug AS bank_slug, b.logo_url AS bank_logo_url, b.created_at AS bank_created_at,
+       c.label, c.purpose, c.last4, c.created_at
+FROM cards c
+JOIN banks b ON b.id = c.bank_id
+WHERE c.last4 = $1
+  AND b.slug  = $2
+LIMIT 1
+`
+
+type GetCardByLast4AndBankParams struct {
+	Last4 string `json:"last4"`
+	Slug  string `json:"slug"`
+}
+
+type GetCardByLast4AndBankRow struct {
+	ID            uuid.UUID      `json:"id"`
+	BankID        uuid.UUID      `json:"bank_id"`
+	BankName      string         `json:"bank_name"`
+	BankSlug      string         `json:"bank_slug"`
+	BankLogoUrl   sql.NullString `json:"bank_logo_url"`
+	BankCreatedAt time.Time      `json:"bank_created_at"`
+	Label         string         `json:"label"`
+	Purpose       string         `json:"purpose"`
+	Last4         string         `json:"last4"`
+	CreatedAt     time.Time      `json:"created_at"`
+}
+
+func (q *Queries) GetCardByLast4AndBank(ctx context.Context, arg GetCardByLast4AndBankParams) (GetCardByLast4AndBankRow, error) {
+	row := q.db.QueryRowContext(ctx, getCardByLast4AndBank, arg.Last4, arg.Slug)
+	var i GetCardByLast4AndBankRow
+	err := row.Scan(
+		&i.ID,
+		&i.BankID,
+		&i.BankName,
+		&i.BankSlug,
+		&i.BankLogoUrl,
+		&i.BankCreatedAt,
+		&i.Label,
+		&i.Purpose,
+		&i.Last4,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertCard = `-- name: InsertCard :one
 INSERT INTO cards (bank_id, label, purpose, last4)
 VALUES ($1, $2, $3, $4)

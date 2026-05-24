@@ -32,3 +32,22 @@ SELECT c.id, c.bank_id,
 FROM cards c
 JOIN banks b ON b.id = c.bank_id
 WHERE c.id = $1;
+
+-- name: GetCardByLast4 :one
+SELECT c.id, c.bank_id,
+       b.name AS bank_name, b.slug AS bank_slug, b.logo_url AS bank_logo_url, b.created_at AS bank_created_at,
+       c.label, c.purpose, c.last4, c.created_at
+FROM cards c
+JOIN banks b ON b.id = c.bank_id
+WHERE c.last4 = $1
+LIMIT 1;
+
+-- name: GetCardByLast4AndBank :one
+SELECT c.id, c.bank_id,
+       b.name AS bank_name, b.slug AS bank_slug, b.logo_url AS bank_logo_url, b.created_at AS bank_created_at,
+       c.label, c.purpose, c.last4, c.created_at
+FROM cards c
+JOIN banks b ON b.id = c.bank_id
+WHERE c.last4 = $1
+  AND b.slug  = $2
+LIMIT 1;

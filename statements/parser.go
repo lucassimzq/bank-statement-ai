@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"time"
 
+	"encore.app/cards"
 	"encore.app/transactions"
 	"encore.dev/rlog"
 	"github.com/google/generative-ai-go/genai"
 )
 
-// parseStatement calls the AI parser and stores results.
-// Runs as a background goroutine — all errors update the statement row to status=error.
-func (s *Service) parseStatement(statementID, cardID string, pdfBytes []byte) {
+// parseStatement calls the AI parser and stores results for each card found.
+// Runs as a background goroutine — errors update the statement row to status=error.
+func (s *Service) parseStatement(statementID string, pdfBytes []byte) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -39,10 +40,29 @@ func (s *Service) parseStatement(statementID, cardID string, pdfBytes []byte) {
 		return
 	}
 
+	// Load known bank slugs so the AI prompt can reference them and we can validate.
+	banksResp, err := cards.ListBanks(ctx)
+	if err != nil {
+		fail("failed to load banks")
+		return
+	}
+	bankSlugSet := make(map[string]bool, len(banksResp.Banks))
+	bankSlugs := make([]string, len(banksResp.Banks))
+	for i, b := range banksResp.Banks {
+		bankSlugSet[b.Slug] = true
+		bankSlugs[i] = b.Slug
+	}
+
 	// Call AI.
-	parsed, err := s.callGemini(ctx, pdfBytes, slugs, mappingsResp.Mappings)
+	parsed, err := s.callGemini(ctx, pdfBytes, slugs, bankSlugs, mappingsResp.Mappings)
 	if err != nil {
 		fail("AI parsing failed: " + err.Error())
+		return
+	}
+
+	// Validate bank slug from AI response.
+	if !bankSlugSet[parsed.BankSlug] {
+		fail(fmt.Sprintf("bank not supported: %q (known banks: %v)", parsed.BankSlug, bankSlugs))
 		return
 	}
 
@@ -56,24 +76,61 @@ func (s *Service) parseStatement(statementID, cardID string, pdfBytes []byte) {
 		return
 	}
 
-	// Post-parse dedup: check if a statement for this card+period already exists.
-	exists, err := statementExistsByCardPeriod(ctx, cardID, parsed.Year, parsed.Month)
-	if err != nil {
-		fail("failed to check for existing statement")
-		return
-	}
-	if exists {
-		fail(fmt.Sprintf("a statement for %d-%02d already exists for this card", parsed.Year, parsed.Month))
-		return
+	// Process each card found in the statement.
+	for _, pc := range parsed.Cards {
+		if err := s.processCard(ctx, statementID, parsed.BankSlug, parsed.Year, parsed.Month, pc); err != nil {
+			rlog.Error("parser: failed to process card",
+				"statement_id", statementID,
+				"card_last4", pc.CardLast4,
+				"err", err,
+			)
+		}
 	}
 
-	// Store transactions.
-	if len(parsed.Transactions) > 0 {
-		inputs := make([]transactions.TransactionInput, 0, len(parsed.Transactions))
-		for _, t := range parsed.Transactions {
+	// Mark statement as parsed (sets year, month, status=1).
+	if _, err := updateStatementParsed(ctx, statementID, parsed.Year, parsed.Month, ""); err != nil {
+		rlog.Error("parser: failed to mark statement as parsed", "statement_id", statementID, "err", err)
+	}
+}
+
+// processCard handles one card section from the parsed statement.
+func (s *Service) processCard(ctx context.Context, statementID, bankSlug string, year, month int, pc parsedCard) error {
+	// Look up card by last4 + bank slug (last4 alone is not unique enough).
+	card, err := cards.GetCardByLast4AndBank(ctx, &cards.GetCardByLast4AndBankParams{
+		Last4:    pc.CardLast4,
+		BankSlug: bankSlug,
+	})
+	if err != nil {
+		// Card not found in system — record as skipped so re-upload can retry later.
+		rlog.Info("parser: card not found, skipping", "card_last4", pc.CardLast4, "bank_slug", bankSlug)
+		return insertCardStatementSkipped(ctx, statementID, pc.CardLast4)
+	}
+
+	// Check if this card already has a parsed entry for this period.
+	exists, err := cardStatementExistsForPeriod(ctx, card.ID, year, month)
+	if err != nil {
+		return fmt.Errorf("check card period: %w", err)
+	}
+	if exists {
+		rlog.Info("parser: card already parsed for period, skipping",
+			"card_id", card.ID,
+			"year", year,
+			"month", month,
+		)
+		return nil
+	}
+
+	// Store transactions for this card.
+	if len(pc.Transactions) > 0 {
+		inputs := make([]transactions.TransactionInput, 0, len(pc.Transactions))
+		for _, t := range pc.Transactions {
 			date, err := time.Parse("2006-01-02", t.TxnDate)
 			if err != nil {
-				rlog.Warn("parser: skipping transaction with bad date", "txn_date", t.TxnDate, "err", err)
+				rlog.Warn("parser: skipping transaction with bad date",
+					"txn_date", t.TxnDate,
+					"card_last4", pc.CardLast4,
+					"err", err,
+				)
 				continue
 			}
 			slug := t.CategorySlug
@@ -91,28 +148,25 @@ func (s *Service) parseStatement(statementID, cardID string, pdfBytes []byte) {
 		if len(inputs) > 0 {
 			if _, err := transactions.BatchCreate(ctx, &transactions.BatchCreateParams{
 				StatementID:  statementID,
-				CardID:       cardID,
+				CardID:       card.ID,
 				Transactions: inputs,
 			}); err != nil {
-				fail("failed to store transactions: " + err.Error())
-				return
+				return fmt.Errorf("store transactions: %w", err)
 			}
 		}
 	}
 
-	// Mark statement as parsed (sets year, month, balance, status=1).
-	if _, err := updateStatementParsed(ctx, statementID, parsed.Year, parsed.Month, parsed.StatementBalance); err != nil {
-		rlog.Error("parser: failed to mark statement as parsed", "statement_id", statementID, "err", err)
-	}
+	// Record successful card_statement entry.
+	return insertCardStatementParsed(ctx, statementID, card.ID, pc.CardLast4, pc.StatementBalance)
 }
 
-func (s *Service) callGemini(ctx context.Context, pdfBytes []byte, categorySlugs []string, mappings []*transactions.CategoryMapping) (*parsedStatement, error) {
+func (s *Service) callGemini(ctx context.Context, pdfBytes []byte, categorySlugs, bankSlugs []string, mappings []*transactions.CategoryMapping) (*parsedStatement, error) {
 	model := s.gemini.GenerativeModel("gemini-3.5-flash")
 	model.ResponseMIMEType = "application/json"
 
 	resp, err := model.GenerateContent(ctx,
 		genai.Blob{MIMEType: "application/pdf", Data: pdfBytes},
-		genai.Text(buildParsePrompt(categorySlugs, mappings)),
+		genai.Text(buildParsePrompt(categorySlugs, bankSlugs, mappings)),
 	)
 	if err != nil {
 		return nil, err

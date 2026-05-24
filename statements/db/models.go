@@ -11,9 +11,18 @@ import (
 	"github.com/google/uuid"
 )
 
+type CardStatement struct {
+	ID           uuid.UUID      `json:"id"`
+	StatementID  uuid.UUID      `json:"statement_id"`
+	CardLast4    string         `json:"card_last4"`
+	CardID       uuid.NullUUID  `json:"card_id"`
+	Status       int16          `json:"status"`
+	StatementBal sql.NullString `json:"statement_bal"`
+	CreatedAt    time.Time      `json:"created_at"`
+}
+
 type Statement struct {
 	ID           uuid.UUID      `json:"id"`
-	CardID       uuid.UUID      `json:"card_id"`
 	Year         sql.NullInt32  `json:"year"`
 	Month        sql.NullInt32  `json:"month"`
 	StatementBal sql.NullString `json:"statement_bal"`
