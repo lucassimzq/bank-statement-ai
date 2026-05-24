@@ -65,6 +65,17 @@ type ListTransactionsResponse struct {
 	Transactions []*Transaction `json:"transactions"`
 }
 
+type MonthlySpendingPoint struct {
+	CardID string `json:"card_id"`
+	Year   int    `json:"year"`
+	Month  int    `json:"month"`
+	Total  string `json:"total"`
+}
+
+type GetMonthlySpendingResponse struct {
+	Data []*MonthlySpendingPoint `json:"data"`
+}
+
 type ListTransactionsParams struct {
 	StatementID string `query:"statement_id"`
 	CardID      string `query:"card_id"`

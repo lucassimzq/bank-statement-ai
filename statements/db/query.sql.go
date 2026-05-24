@@ -38,7 +38,7 @@ func (q *Queries) CardStatementExistsForPeriod(ctx context.Context, arg CardStat
 }
 
 const getStatementByID = `-- name: GetStatementByID :one
-SELECT id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+SELECT id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at
 FROM statements
 WHERE id = $1
 `
@@ -52,11 +52,11 @@ func (q *Queries) GetStatementByID(ctx context.Context, id uuid.UUID) (Statement
 		&i.Month,
 		&i.StatementBal,
 		&i.FilePath,
-		&i.ParsedAt,
-		&i.CreatedAt,
 		&i.Status,
 		&i.Message,
 		&i.FileHash,
+		&i.ParsedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -99,7 +99,7 @@ func (q *Queries) InsertCardStatement(ctx context.Context, arg InsertCardStateme
 const insertStatement = `-- name: InsertStatement :one
 INSERT INTO statements (file_hash, file_path, status)
 VALUES ($1, $2, 0)
-RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+RETURNING id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at
 `
 
 type InsertStatementParams struct {
@@ -116,17 +116,17 @@ func (q *Queries) InsertStatement(ctx context.Context, arg InsertStatementParams
 		&i.Month,
 		&i.StatementBal,
 		&i.FilePath,
-		&i.ParsedAt,
-		&i.CreatedAt,
 		&i.Status,
 		&i.Message,
 		&i.FileHash,
+		&i.ParsedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const queryStatementsByCard = `-- name: QueryStatementsByCard :many
-SELECT s.id, s.year, s.month, s.statement_bal, s.file_path, s.parsed_at, s.created_at, s.status, s.message, s.file_hash
+SELECT s.id, s.year, s.month, s.statement_bal, s.file_path, s.status, s.message, s.file_hash, s.parsed_at, s.created_at
 FROM statements s
 JOIN card_statement cs ON cs.statement_id = s.id
 WHERE cs.card_id = $1
@@ -148,11 +148,11 @@ func (q *Queries) QueryStatementsByCard(ctx context.Context, cardID uuid.NullUUI
 			&i.Month,
 			&i.StatementBal,
 			&i.FilePath,
-			&i.ParsedAt,
-			&i.CreatedAt,
 			&i.Status,
 			&i.Message,
 			&i.FileHash,
+			&i.ParsedAt,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -192,7 +192,7 @@ UPDATE statements
 SET statement_bal = $2,
     parsed_at     = NOW()
 WHERE id = $1
-RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+RETURNING id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at
 `
 
 type UpdateStatementBalanceParams struct {
@@ -209,11 +209,11 @@ func (q *Queries) UpdateStatementBalance(ctx context.Context, arg UpdateStatemen
 		&i.Month,
 		&i.StatementBal,
 		&i.FilePath,
-		&i.ParsedAt,
-		&i.CreatedAt,
 		&i.Status,
 		&i.Message,
 		&i.FileHash,
+		&i.ParsedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -223,7 +223,7 @@ UPDATE statements
 SET status  = 2,
     message = $2
 WHERE id = $1
-RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+RETURNING id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at
 `
 
 type UpdateStatementErrorParams struct {
@@ -240,11 +240,11 @@ func (q *Queries) UpdateStatementError(ctx context.Context, arg UpdateStatementE
 		&i.Month,
 		&i.StatementBal,
 		&i.FilePath,
-		&i.ParsedAt,
-		&i.CreatedAt,
 		&i.Status,
 		&i.Message,
 		&i.FileHash,
+		&i.ParsedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -257,7 +257,7 @@ SET year          = $2,
     status        = 1,
     parsed_at     = NOW()
 WHERE id = $1
-RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+RETURNING id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at
 `
 
 type UpdateStatementParsedParams struct {
@@ -281,11 +281,11 @@ func (q *Queries) UpdateStatementParsed(ctx context.Context, arg UpdateStatement
 		&i.Month,
 		&i.StatementBal,
 		&i.FilePath,
-		&i.ParsedAt,
-		&i.CreatedAt,
 		&i.Status,
 		&i.Message,
 		&i.FileHash,
+		&i.ParsedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }

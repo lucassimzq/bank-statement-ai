@@ -40,6 +40,17 @@ ORDER BY t.txn_date;
 -- name: DeleteTransactionsByStatement :exec
 DELETE FROM transactions WHERE statement_id = $1;
 
+-- name: QueryMonthlySpending :many
+SELECT
+    card_id,
+    EXTRACT(YEAR  FROM txn_date)::int AS year,
+    EXTRACT(MONTH FROM txn_date)::int AS month,
+    SUM(amount::numeric)::text        AS total
+FROM transactions
+WHERE amount::numeric > 0
+GROUP BY card_id, year, month
+ORDER BY year, month, card_id;
+
 -- name: QueryCategoryMappings :many
 SELECT cm.id, cm.merchant_pattern, c.slug AS category_slug, c.name AS category_name, cm.created_at
 FROM category_mapping cm

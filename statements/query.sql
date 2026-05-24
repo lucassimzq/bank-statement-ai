@@ -1,15 +1,15 @@
 -- name: InsertStatement :one
 INSERT INTO statements (file_hash, file_path, status)
 VALUES ($1, $2, 0)
-RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash;
+RETURNING id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at;
 
 -- name: GetStatementByID :one
-SELECT id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+SELECT id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at
 FROM statements
 WHERE id = $1;
 
 -- name: QueryStatementsByCard :many
-SELECT s.id, s.year, s.month, s.statement_bal, s.file_path, s.parsed_at, s.created_at, s.status, s.message, s.file_hash
+SELECT s.id, s.year, s.month, s.statement_bal, s.file_path, s.status, s.message, s.file_hash, s.parsed_at, s.created_at
 FROM statements s
 JOIN card_statement cs ON cs.statement_id = s.id
 WHERE cs.card_id = $1
@@ -23,21 +23,21 @@ SET year          = $2,
     status        = 1,
     parsed_at     = NOW()
 WHERE id = $1
-RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash;
+RETURNING id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at;
 
 -- name: UpdateStatementError :one
 UPDATE statements
 SET status  = 2,
     message = $2
 WHERE id = $1
-RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash;
+RETURNING id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at;
 
 -- name: UpdateStatementBalance :one
 UPDATE statements
 SET statement_bal = $2,
     parsed_at     = NOW()
 WHERE id = $1
-RETURNING id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash;
+RETURNING id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at;
 
 -- Reject only when the statement is fully parsed (no skipped card_statements).
 -- name: StatementFullyParsedByHash :one

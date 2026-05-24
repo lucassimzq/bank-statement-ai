@@ -228,6 +228,53 @@ func (q *Queries) QueryCategoryMappings(ctx context.Context) ([]QueryCategoryMap
 	return items, nil
 }
 
+const queryMonthlySpending = `-- name: QueryMonthlySpending :many
+SELECT
+    card_id,
+    EXTRACT(YEAR  FROM txn_date)::int AS year,
+    EXTRACT(MONTH FROM txn_date)::int AS month,
+    SUM(amount::numeric)::text        AS total
+FROM transactions
+WHERE amount::numeric > 0
+GROUP BY card_id, year, month
+ORDER BY year, month, card_id
+`
+
+type QueryMonthlySpendingRow struct {
+	CardID uuid.UUID `json:"card_id"`
+	Year   int32     `json:"year"`
+	Month  int32     `json:"month"`
+	Total  string    `json:"total"`
+}
+
+func (q *Queries) QueryMonthlySpending(ctx context.Context) ([]QueryMonthlySpendingRow, error) {
+	rows, err := q.db.QueryContext(ctx, queryMonthlySpending)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []QueryMonthlySpendingRow
+	for rows.Next() {
+		var i QueryMonthlySpendingRow
+		if err := rows.Scan(
+			&i.CardID,
+			&i.Year,
+			&i.Month,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const queryTransactionsByCardAndMonth = `-- name: QueryTransactionsByCardAndMonth :many
 SELECT t.id, t.statement_id, t.card_id, t.txn_date, t.merchant_raw, t.merchant, t.amount,
        c.id AS category_id, c.name AS category_name, c.slug AS category_slug,

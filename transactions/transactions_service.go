@@ -27,6 +27,18 @@ func GetTransaction(ctx context.Context, id string) (*Transaction, error) {
 	return getTransactionByID(ctx, id)
 }
 
+// GetMonthlySpending returns total spending grouped by card and month, across all time.
+// Used by the frontend trend chart.
+//
+//encore:api public method=GET path=/monthly-spending
+func GetMonthlySpending(ctx context.Context) (*GetMonthlySpendingResponse, error) {
+	data, err := queryMonthlySpending(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &GetMonthlySpendingResponse{Data: data}, nil
+}
+
 // ListTransactions returns transactions filtered by either statement_id
 // or card_id+year+month (at least one filter is required).
 //

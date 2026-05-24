@@ -122,6 +122,23 @@ func queryTransactionsByCardAndMonth(ctx context.Context, cardID string, year, m
 	return result, nil
 }
 
+func queryMonthlySpending(ctx context.Context) ([]*MonthlySpendingPoint, error) {
+	rows, err := queries.QueryMonthlySpending(ctx)
+	if err != nil {
+		return nil, errs.WrapCode(err, errs.Internal, "query monthly spending")
+	}
+	result := make([]*MonthlySpendingPoint, len(rows))
+	for i, r := range rows {
+		result[i] = &MonthlySpendingPoint{
+			CardID: r.CardID.String(),
+			Year:   int(r.Year),
+			Month:  int(r.Month),
+			Total:  r.Total,
+		}
+	}
+	return result, nil
+}
+
 func deleteTransactionsByStatement(ctx context.Context, statementID string) error {
 	sID, err := uuid.Parse(statementID)
 	if err != nil {
