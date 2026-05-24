@@ -27,6 +27,8 @@ func buildParsePrompt(categorySlugs []string, mappings []*transactions.CategoryM
 
 Return a JSON object with this exact structure:
 {
+  "year": 2024,
+  "month": 1,
   "statement_balance": "1234.56",
   "transactions": [
     {
@@ -40,6 +42,8 @@ Return a JSON object with this exact structure:
 }
 
 Rules:
+- year: the statement year as an integer (e.g. 2024)
+- month: the statement month as an integer 1-12 (e.g. 1 for January)
 - statement_balance: the total/closing balance or amount due shown on the statement (string, 2 decimal places, no currency symbol)
 - txn_date: ISO date format YYYY-MM-DD
 - merchant_raw: the exact merchant string as it appears on the statement

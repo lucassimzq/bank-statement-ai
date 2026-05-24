@@ -16,6 +16,7 @@ INSERT INTO categories (name, slug) VALUES
     ('Utilities',       'utilities'),
     ('Travel',          'travel'),
     ('EWallet Topup',   'ewallet-topup'),
+    ('Shopping',        'shopping'),
     ('Pet',             'pet'),
     ('Others',          'others');
 

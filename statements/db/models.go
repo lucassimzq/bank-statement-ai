@@ -14,10 +14,13 @@ import (
 type Statement struct {
 	ID           uuid.UUID      `json:"id"`
 	CardID       uuid.UUID      `json:"card_id"`
-	Year         int32          `json:"year"`
-	Month        int32          `json:"month"`
+	Year         sql.NullInt32  `json:"year"`
+	Month        sql.NullInt32  `json:"month"`
 	StatementBal sql.NullString `json:"statement_bal"`
 	FilePath     sql.NullString `json:"file_path"`
 	ParsedAt     sql.NullTime   `json:"parsed_at"`
 	CreatedAt    time.Time      `json:"created_at"`
+	Status       int16          `json:"status"`
+	Message      sql.NullString `json:"message"`
+	FileHash     sql.NullString `json:"file_hash"`
 }

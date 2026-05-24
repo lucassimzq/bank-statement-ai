@@ -2,15 +2,19 @@ package statements
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 
+	"encore.app/cards"
 	"encore.dev/beta/errs"
 	"encore.dev/storage/objects"
 )
 
-// Upload accepts a multipart form with fields: card_id, year, month, file (PDF).
+// Upload accepts a multipart form with fields: card_id and file (PDF).
+// Year and month are extracted from the PDF by the AI parser.
 //
 //encore:api public raw method=POST path=/statements/upload
 func (s *Service) Upload(w http.ResponseWriter, r *http.Request) {
@@ -21,9 +25,37 @@ func (s *Service) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer form.File.Close()
 
-	filePath := fmt.Sprintf("statements/%s/%d-%02d.pdf", form.CardID, form.Year, form.Month)
-	writer := statementFiles.Upload(r.Context(), filePath, objects.WithUploadAttrs(objects.UploadAttrs{ContentType: "application/pdf"}))
-	if _, err := io.Copy(writer, form.File); err != nil {
+	// Read file into memory for hashing and uploading.
+	pdfBytes, err := io.ReadAll(form.File)
+	if err != nil {
+		jsonError(w, "failed to read file", http.StatusInternalServerError)
+		return
+	}
+
+	// Validate card exists.
+	if _, err := cards.GetCard(r.Context(), form.CardID); err != nil {
+		writeErr(w, errBad("card not found"))
+		return
+	}
+
+	// Pre-validate: reject duplicate files before spending any AI tokens.
+	hash := sha256Hash(pdfBytes)
+	duplicate, err := statementExistsByHash(r.Context(), hash)
+	if err != nil {
+		jsonError(w, "failed to check for duplicate: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if duplicate {
+		jsonError(w, "this statement has already been uploaded", http.StatusConflict)
+		return
+	}
+
+	// Upload PDF to bucket.
+	filePath := fmt.Sprintf("statements/%s/%s.pdf", form.CardID, hash)
+	writer := statementFiles.Upload(r.Context(), filePath, objects.WithUploadAttrs(objects.UploadAttrs{
+		ContentType: "application/pdf",
+	}))
+	if _, err := writer.Write(pdfBytes); err != nil {
 		jsonError(w, "failed to store file", http.StatusInternalServerError)
 		return
 	}
@@ -32,13 +64,15 @@ func (s *Service) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stmt, err := insertStatement(r.Context(), form.CardID, form.Year, form.Month, filePath)
+	// Insert statement row with status=parsing.
+	stmt, err := insertStatement(r.Context(), form.CardID, hash, filePath)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 
-	go s.parseStatement(stmt.ID, stmt.CardID, filePath)
+	// Parse in background — passes bytes directly, no re-download needed.
+	go s.parseStatement(stmt.ID, stmt.CardID, pdfBytes)
 
 	jsonResponse(w, stmt, http.StatusCreated)
 }
@@ -67,4 +101,9 @@ func ListStatements(ctx context.Context, p *ListStatementsParams) (*ListStatemen
 //encore:api public method=PATCH path=/statements/:id/balance
 func UpdateBalance(ctx context.Context, id string, p *UpdateBalanceParams) (*Statement, error) {
 	return updateStatementBalance(ctx, id, p.StatementBal)
+}
+
+func sha256Hash(data []byte) string {
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
 }

@@ -1,6 +1,8 @@
 package statements
 
 type parsedStatement struct {
+	Year             int                 `json:"year"`
+	Month            int                 `json:"month"`
 	StatementBalance string              `json:"statement_balance"`
 	Transactions     []parsedTransaction `json:"transactions"`
 }

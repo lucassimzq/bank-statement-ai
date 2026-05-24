@@ -13,7 +13,7 @@ import (
 )
 
 const getStatementByID = `-- name: GetStatementByID :one
-SELECT id, card_id, year, month, statement_bal, file_path, parsed_at, created_at
+SELECT id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
 FROM statements
 WHERE id = $1
 `
@@ -30,30 +30,27 @@ func (q *Queries) GetStatementByID(ctx context.Context, id uuid.UUID) (Statement
 		&i.FilePath,
 		&i.ParsedAt,
 		&i.CreatedAt,
+		&i.Status,
+		&i.Message,
+		&i.FileHash,
 	)
 	return i, err
 }
 
 const insertStatement = `-- name: InsertStatement :one
-INSERT INTO statements (card_id, year, month, file_path)
-VALUES ($1, $2, $3, $4)
-RETURNING id, card_id, year, month, statement_bal, file_path, parsed_at, created_at
+INSERT INTO statements (card_id, file_hash, file_path, status)
+VALUES ($1, $2, $3, 0)
+RETURNING id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
 `
 
 type InsertStatementParams struct {
 	CardID   uuid.UUID      `json:"card_id"`
-	Year     int32          `json:"year"`
-	Month    int32          `json:"month"`
+	FileHash sql.NullString `json:"file_hash"`
 	FilePath sql.NullString `json:"file_path"`
 }
 
 func (q *Queries) InsertStatement(ctx context.Context, arg InsertStatementParams) (Statement, error) {
-	row := q.db.QueryRowContext(ctx, insertStatement,
-		arg.CardID,
-		arg.Year,
-		arg.Month,
-		arg.FilePath,
-	)
+	row := q.db.QueryRowContext(ctx, insertStatement, arg.CardID, arg.FileHash, arg.FilePath)
 	var i Statement
 	err := row.Scan(
 		&i.ID,
@@ -64,15 +61,18 @@ func (q *Queries) InsertStatement(ctx context.Context, arg InsertStatementParams
 		&i.FilePath,
 		&i.ParsedAt,
 		&i.CreatedAt,
+		&i.Status,
+		&i.Message,
+		&i.FileHash,
 	)
 	return i, err
 }
 
 const queryStatementsByCard = `-- name: QueryStatementsByCard :many
-SELECT id, card_id, year, month, statement_bal, file_path, parsed_at, created_at
+SELECT id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
 FROM statements
 WHERE card_id = $1
-ORDER BY year DESC, month DESC
+ORDER BY created_at DESC
 `
 
 func (q *Queries) QueryStatementsByCard(ctx context.Context, cardID uuid.UUID) ([]Statement, error) {
@@ -93,6 +93,9 @@ func (q *Queries) QueryStatementsByCard(ctx context.Context, cardID uuid.UUID) (
 			&i.FilePath,
 			&i.ParsedAt,
 			&i.CreatedAt,
+			&i.Status,
+			&i.Message,
+			&i.FileHash,
 		); err != nil {
 			return nil, err
 		}
@@ -107,11 +110,46 @@ func (q *Queries) QueryStatementsByCard(ctx context.Context, cardID uuid.UUID) (
 	return items, nil
 }
 
+const statementExistsByCardPeriod = `-- name: StatementExistsByCardPeriod :one
+SELECT EXISTS(
+    SELECT 1 FROM statements
+    WHERE card_id = $1
+      AND year    = $2
+      AND month   = $3
+      AND status != 2
+)
+`
+
+type StatementExistsByCardPeriodParams struct {
+	CardID uuid.UUID     `json:"card_id"`
+	Year   sql.NullInt32 `json:"year"`
+	Month  sql.NullInt32 `json:"month"`
+}
+
+func (q *Queries) StatementExistsByCardPeriod(ctx context.Context, arg StatementExistsByCardPeriodParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, statementExistsByCardPeriod, arg.CardID, arg.Year, arg.Month)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const statementExistsByHash = `-- name: StatementExistsByHash :one
+SELECT EXISTS(SELECT 1 FROM statements WHERE file_hash = $1 AND status = 1)
+`
+
+func (q *Queries) StatementExistsByHash(ctx context.Context, fileHash sql.NullString) (bool, error) {
+	row := q.db.QueryRowContext(ctx, statementExistsByHash, fileHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const updateStatementBalance = `-- name: UpdateStatementBalance :one
 UPDATE statements
-SET statement_bal = $2, parsed_at = NOW()
+SET statement_bal = $2,
+    parsed_at     = NOW()
 WHERE id = $1
-RETURNING id, card_id, year, month, statement_bal, file_path, parsed_at, created_at
+RETURNING id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
 `
 
 type UpdateStatementBalanceParams struct {
@@ -131,6 +169,83 @@ func (q *Queries) UpdateStatementBalance(ctx context.Context, arg UpdateStatemen
 		&i.FilePath,
 		&i.ParsedAt,
 		&i.CreatedAt,
+		&i.Status,
+		&i.Message,
+		&i.FileHash,
+	)
+	return i, err
+}
+
+const updateStatementError = `-- name: UpdateStatementError :one
+UPDATE statements
+SET status  = 2,
+    message = $2
+WHERE id = $1
+RETURNING id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+`
+
+type UpdateStatementErrorParams struct {
+	ID      uuid.UUID      `json:"id"`
+	Message sql.NullString `json:"message"`
+}
+
+func (q *Queries) UpdateStatementError(ctx context.Context, arg UpdateStatementErrorParams) (Statement, error) {
+	row := q.db.QueryRowContext(ctx, updateStatementError, arg.ID, arg.Message)
+	var i Statement
+	err := row.Scan(
+		&i.ID,
+		&i.CardID,
+		&i.Year,
+		&i.Month,
+		&i.StatementBal,
+		&i.FilePath,
+		&i.ParsedAt,
+		&i.CreatedAt,
+		&i.Status,
+		&i.Message,
+		&i.FileHash,
+	)
+	return i, err
+}
+
+const updateStatementParsed = `-- name: UpdateStatementParsed :one
+UPDATE statements
+SET year          = $2,
+    month         = $3,
+    statement_bal = $4,
+    status        = 1,
+    parsed_at     = NOW()
+WHERE id = $1
+RETURNING id, card_id, year, month, statement_bal, file_path, parsed_at, created_at, status, message, file_hash
+`
+
+type UpdateStatementParsedParams struct {
+	ID           uuid.UUID      `json:"id"`
+	Year         sql.NullInt32  `json:"year"`
+	Month        sql.NullInt32  `json:"month"`
+	StatementBal sql.NullString `json:"statement_bal"`
+}
+
+func (q *Queries) UpdateStatementParsed(ctx context.Context, arg UpdateStatementParsedParams) (Statement, error) {
+	row := q.db.QueryRowContext(ctx, updateStatementParsed,
+		arg.ID,
+		arg.Year,
+		arg.Month,
+		arg.StatementBal,
+	)
+	var i Statement
+	err := row.Scan(
+		&i.ID,
+		&i.CardID,
+		&i.Year,
+		&i.Month,
+		&i.StatementBal,
+		&i.FilePath,
+		&i.ParsedAt,
+		&i.CreatedAt,
+		&i.Status,
+		&i.Message,
+		&i.FileHash,
 	)
 	return i, err
 }
