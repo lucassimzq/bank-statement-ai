@@ -66,3 +66,27 @@ SELECT EXISTS(
       AND s.month    = $3
       AND cs.status  = 1
 );
+
+-- name: ListAllStatements :many
+SELECT id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at
+FROM statements
+ORDER BY created_at DESC;
+
+-- name: GetCardStatementsByStatementID :many
+SELECT id, statement_id, card_last4, card_id, status, statement_bal, created_at
+FROM card_statement
+WHERE statement_id = $1
+ORDER BY created_at ASC;
+
+-- name: ResetStatementForRetry :one
+UPDATE statements
+SET status  = 0,
+    message = NULL
+WHERE id = $1
+RETURNING id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at;
+
+-- name: DeleteCardStatementsByStatementID :exec
+DELETE FROM card_statement WHERE statement_id = $1;
+
+-- name: DeleteStatement :exec
+DELETE FROM statements WHERE id = $1;

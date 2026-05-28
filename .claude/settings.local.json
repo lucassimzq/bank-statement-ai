@@ -4,7 +4,8 @@
       "Bash(encore check *)",
       "Bash(grep -r \"func Convert\" /Users/zhenquan/go/pkg/mod/encore.dev@v1.52.1/beta/errs/*.go | head -5)",
       "Bash(grep -n \"DocumentBlock\\\\|PDFBlock\\\\|RequestDocumentBlock\\\\|Base64PDF\\\\|DocumentSource\\\\|ContentBlockParam\" /Users/zhenquan/go/pkg/mod/github.com/anthropics/anthropic-sdk-go@v1.45.0/message.go | head -40)",
-      "Bash(grep -rn \"func.*Download\\\\b\" /Users/zhenquan/go/pkg/mod/encore.dev@v1.52.1/storage/objects/*.go 2>/dev/null | head -10)"
+      "Bash(grep -rn \"func.*Download\\\\b\" /Users/zhenquan/go/pkg/mod/encore.dev@v1.52.1/storage/objects/*.go 2>/dev/null | head -10)",
+      "Bash(npx tsc *)"
     ]
   }
 }

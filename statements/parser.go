@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"encore.app/cards"
@@ -87,10 +89,33 @@ func (s *Service) parseStatement(statementID string, pdfBytes []byte) {
 		}
 	}
 
-	// Mark statement as parsed (sets year, month, status=1).
-	if _, err := updateStatementParsed(ctx, statementID, parsed.Year, parsed.Month, ""); err != nil {
+	// Sum card balances for the overall statement balance.
+	var total float64
+	for _, pc := range parsed.Cards {
+		total += parseBalanceString(pc.StatementBalance)
+	}
+	balanceStr := ""
+	if total > 0 {
+		balanceStr = strconv.FormatFloat(total, 'f', 2, 64)
+	}
+
+	// Mark statement as parsed (sets year, month, balance, status=1).
+	if _, err := updateStatementParsed(ctx, statementID, parsed.Year, parsed.Month, balanceStr); err != nil {
 		rlog.Error("parser: failed to mark statement as parsed", "statement_id", statementID, "err", err)
 	}
+}
+
+// parseBalanceString strips currency symbols / commas and returns a float.
+// e.g. "RM 3,421.50" → 3421.50,  "1,200.00" → 1200.00
+func parseBalanceString(s string) float64 {
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= '0' && r <= '9') || r == '.' || r == '-' {
+			b.WriteRune(r)
+		}
+	}
+	v, _ := strconv.ParseFloat(b.String(), 64)
+	return v
 }
 
 // processCard handles one card section from the parsed statement.

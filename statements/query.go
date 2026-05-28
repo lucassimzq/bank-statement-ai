@@ -167,7 +167,93 @@ func cardStatementExistsForPeriod(ctx context.Context, cardID string, year, mont
 	return exists, nil
 }
 
+func listAllStatements(ctx context.Context) ([]*Statement, error) {
+	rows, err := queries.ListAllStatements(ctx)
+	if err != nil {
+		return nil, errs.WrapCode(err, errs.Internal, "list statements")
+	}
+	stmts := make([]*Statement, len(rows))
+	for i, r := range rows {
+		stmts[i] = toStatement(r)
+	}
+	return stmts, nil
+}
+
+func getCardStatementsByStatementID(ctx context.Context, statementID string) ([]*CardStatementInfo, error) {
+	sID, err := uuid.Parse(statementID)
+	if err != nil {
+		return nil, errs.B().Code(errs.InvalidArgument).Msg("invalid statement id").Err()
+	}
+	rows, err := queries.GetCardStatementsByStatementID(ctx, sID)
+	if err != nil {
+		return nil, errs.WrapCode(err, errs.Internal, "get card statements")
+	}
+	cards := make([]*CardStatementInfo, len(rows))
+	for i, r := range rows {
+		info := &CardStatementInfo{
+			CardLast4: r.CardLast4,
+			Status:    int(r.Status),
+		}
+		if r.CardID.Valid {
+			s := r.CardID.UUID.String()
+			info.CardID = &s
+		}
+		if r.StatementBal.Valid && r.StatementBal.String != "" {
+			info.StatementBal = &r.StatementBal.String
+		}
+		cards[i] = info
+	}
+	return cards, nil
+}
+
+func resetStatementForRetry(ctx context.Context, id string) (*Statement, error) {
+	sID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, errs.B().Code(errs.InvalidArgument).Msg("invalid statement id").Err()
+	}
+	row, err := queries.ResetStatementForRetry(ctx, sID)
+	if err != nil {
+		return nil, errs.WrapCode(err, errs.Internal, "reset statement")
+	}
+	return toStatement(row), nil
+}
+
+func deleteStatementByID(ctx context.Context, id string) error {
+	sID, err := uuid.Parse(id)
+	if err != nil {
+		return errs.B().Code(errs.InvalidArgument).Msg("invalid statement id").Err()
+	}
+	// Delete child rows first (no CASCADE on the FK).
+	if err := queries.DeleteCardStatementsByStatementID(ctx, sID); err != nil {
+		return errs.WrapCode(err, errs.Internal, "delete card statements")
+	}
+	if err := queries.DeleteStatement(ctx, sID); err != nil {
+		return errs.WrapCode(err, errs.Internal, "delete statement")
+	}
+	return nil
+}
+
 // ── Mapper ───────────────────────────────────────────────────────────────────
+
+func toStatementWithCards(ctx context.Context, r stmtdb.Statement) *StatementWithCards {
+	s := toStatement(r)
+	cards, _ := getCardStatementsByStatementID(ctx, s.ID)
+	if cards == nil {
+		cards = []*CardStatementInfo{}
+	}
+	return &StatementWithCards{
+		ID:           s.ID,
+		Status:       s.Status,
+		Message:      s.Message,
+		Year:         s.Year,
+		Month:        s.Month,
+		StatementBal: s.StatementBal,
+		FilePath:     s.FilePath,
+		ParsedAt:     s.ParsedAt,
+		CreatedAt:    s.CreatedAt,
+		Cards:        cards,
+	}
+}
 
 func toStatement(r stmtdb.Statement) *Statement {
 	s := &Statement{

@@ -37,6 +37,62 @@ func (q *Queries) CardStatementExistsForPeriod(ctx context.Context, arg CardStat
 	return exists, err
 }
 
+const deleteCardStatementsByStatementID = `-- name: DeleteCardStatementsByStatementID :exec
+DELETE FROM card_statement WHERE statement_id = $1
+`
+
+func (q *Queries) DeleteCardStatementsByStatementID(ctx context.Context, statementID uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteCardStatementsByStatementID, statementID)
+	return err
+}
+
+const deleteStatement = `-- name: DeleteStatement :exec
+DELETE FROM statements WHERE id = $1
+`
+
+func (q *Queries) DeleteStatement(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteStatement, id)
+	return err
+}
+
+const getCardStatementsByStatementID = `-- name: GetCardStatementsByStatementID :many
+SELECT id, statement_id, card_last4, card_id, status, statement_bal, created_at
+FROM card_statement
+WHERE statement_id = $1
+ORDER BY created_at ASC
+`
+
+func (q *Queries) GetCardStatementsByStatementID(ctx context.Context, statementID uuid.UUID) ([]CardStatement, error) {
+	rows, err := q.db.QueryContext(ctx, getCardStatementsByStatementID, statementID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CardStatement
+	for rows.Next() {
+		var i CardStatement
+		if err := rows.Scan(
+			&i.ID,
+			&i.StatementID,
+			&i.CardLast4,
+			&i.CardID,
+			&i.Status,
+			&i.StatementBal,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getStatementByID = `-- name: GetStatementByID :one
 SELECT id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at
 FROM statements
@@ -125,6 +181,46 @@ func (q *Queries) InsertStatement(ctx context.Context, arg InsertStatementParams
 	return i, err
 }
 
+const listAllStatements = `-- name: ListAllStatements :many
+SELECT id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at
+FROM statements
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListAllStatements(ctx context.Context) ([]Statement, error) {
+	rows, err := q.db.QueryContext(ctx, listAllStatements)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Statement
+	for rows.Next() {
+		var i Statement
+		if err := rows.Scan(
+			&i.ID,
+			&i.Year,
+			&i.Month,
+			&i.StatementBal,
+			&i.FilePath,
+			&i.Status,
+			&i.Message,
+			&i.FileHash,
+			&i.ParsedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const queryStatementsByCard = `-- name: QueryStatementsByCard :many
 SELECT s.id, s.year, s.month, s.statement_bal, s.file_path, s.status, s.message, s.file_hash, s.parsed_at, s.created_at
 FROM statements s
@@ -165,6 +261,32 @@ func (q *Queries) QueryStatementsByCard(ctx context.Context, cardID uuid.NullUUI
 		return nil, err
 	}
 	return items, nil
+}
+
+const resetStatementForRetry = `-- name: ResetStatementForRetry :one
+UPDATE statements
+SET status  = 0,
+    message = NULL
+WHERE id = $1
+RETURNING id, year, month, statement_bal, file_path, status, message, file_hash, parsed_at, created_at
+`
+
+func (q *Queries) ResetStatementForRetry(ctx context.Context, id uuid.UUID) (Statement, error) {
+	row := q.db.QueryRowContext(ctx, resetStatementForRetry, id)
+	var i Statement
+	err := row.Scan(
+		&i.ID,
+		&i.Year,
+		&i.Month,
+		&i.StatementBal,
+		&i.FilePath,
+		&i.Status,
+		&i.Message,
+		&i.FileHash,
+		&i.ParsedAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const statementFullyParsedByHash = `-- name: StatementFullyParsedByHash :one

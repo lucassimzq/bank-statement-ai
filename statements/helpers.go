@@ -3,8 +3,33 @@ package statements
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
 )
+
+// sumCardBalances adds up statement_bal across all parsed card entries.
+// Returns nil if none of the cards carry a balance.
+func sumCardBalances(cards []*CardStatementInfo) *string {
+	var total float64
+	found := false
+	for _, c := range cards {
+		if c.StatementBal == nil || *c.StatementBal == "" {
+			continue
+		}
+		v, err := strconv.ParseFloat(*c.StatementBal, 64)
+		if err != nil {
+			continue
+		}
+		total += v
+		found = true
+	}
+	if !found {
+		return nil
+	}
+	s := fmt.Sprintf("%.2f", total)
+	return &s
+}
 
 type badRequestError struct{ msg string }
 

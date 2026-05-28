@@ -8,7 +8,7 @@ import (
 )
 
 type ListStatementsResponse struct {
-	Statements []*Statement `json:"statements"`
+	Statements []*StatementWithCards `json:"statements"`
 }
 
 type UpdateBalanceParams struct {

@@ -80,21 +80,109 @@ type ListStatementsParams struct {
 	CardID string `query:"card_id"`
 }
 
+// ListStatements returns all statements. If card_id is provided, filters to
+// only those statements that include that card.
+//
 //encore:api public method=GET path=/statements
 func ListStatements(ctx context.Context, p *ListStatementsParams) (*ListStatementsResponse, error) {
-	if p.CardID == "" {
-		return nil, errs.B().Code(errs.InvalidArgument).Msg("card_id is required").Err()
+	var baseStmts []*Statement
+	var err error
+
+	if p.CardID != "" {
+		baseStmts, err = queryStatementsByCard(ctx, p.CardID)
+	} else {
+		baseStmts, err = listAllStatements(ctx)
 	}
-	stmts, err := queryStatementsByCard(ctx, p.CardID)
 	if err != nil {
 		return nil, err
 	}
-	return &ListStatementsResponse{Statements: stmts}, nil
+
+	result := make([]*StatementWithCards, len(baseStmts))
+	for i, s := range baseStmts {
+		cards, _ := getCardStatementsByStatementID(ctx, s.ID)
+		if cards == nil {
+			cards = []*CardStatementInfo{}
+		}
+
+		// If the statement itself has no balance, derive it by summing
+		// per-card balances stored in card_statement (covers pre-fix data).
+		bal := s.StatementBal
+		if bal == nil || *bal == "" {
+			bal = sumCardBalances(cards)
+		}
+
+		result[i] = &StatementWithCards{
+			ID:           s.ID,
+			Status:       s.Status,
+			Message:      s.Message,
+			Year:         s.Year,
+			Month:        s.Month,
+			StatementBal: bal,
+			FilePath:     s.FilePath,
+			ParsedAt:     s.ParsedAt,
+			CreatedAt:    s.CreatedAt,
+			Cards:        cards,
+		}
+	}
+	return &ListStatementsResponse{Statements: result}, nil
 }
 
 //encore:api public method=PATCH path=/statements/:id/balance
 func UpdateBalance(ctx context.Context, id string, p *UpdateBalanceParams) (*Statement, error) {
 	return updateStatementBalance(ctx, id, p.StatementBal)
+}
+
+// RetryStatement re-parses a statement that is in error state.
+//
+//encore:api public method=POST path=/statements/retry/:id
+func (s *Service) RetryStatement(ctx context.Context, id string) (*Statement, error) {
+	stmt, err := getStatementByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if stmt.Status != StatusError {
+		return nil, errs.B().Code(errs.FailedPrecondition).Msg("only error statements can be retried").Err()
+	}
+	if stmt.FilePath == nil {
+		return nil, errs.B().Code(errs.Internal).Msg("statement has no stored file").Err()
+	}
+
+	// Re-download file from object storage.
+	reader := statementFiles.Download(ctx, *stmt.FilePath)
+	defer reader.Close()
+	pdfBytes, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, errs.WrapCode(err, errs.Internal, "read statement file")
+	}
+	if err := reader.Err(); err != nil {
+		return nil, errs.WrapCode(err, errs.Internal, "download statement file")
+	}
+
+	// Reset status to parsing and clear error message.
+	stmt, err = resetStatementForRetry(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Re-parse in background.
+	go s.parseStatement(stmt.ID, pdfBytes)
+
+	return stmt, nil
+}
+
+// DeleteStatement permanently removes a statement that failed to parse.
+// Only error-status statements can be deleted — parsed statements are permanent records.
+//
+//encore:api public method=DELETE path=/statements/:id
+func DeleteStatement(ctx context.Context, id string) error {
+	stmt, err := getStatementByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if stmt.Status != StatusError {
+		return errs.B().Code(errs.FailedPrecondition).Msg("only error statements can be deleted").Err()
+	}
+	return deleteStatementByID(ctx, id)
 }
 
 func sha256Hash(data []byte) string {
